@@ -1,5 +1,7 @@
 # ChadGPT
 
+LIVE @ https://chadgpt.fly.dev
+
 A spoof ChatGPT website where users think they're talking to an AI, but they're actually messaging a real human named Chad (me). Built as a fun joke project.
 
 ## How It Works
