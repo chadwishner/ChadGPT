@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { setThreadId } from "@/lib/store";
 import { readFile } from "fs/promises";
 import { basename } from "path";
 
@@ -25,10 +25,6 @@ async function discordFetch(path, options = {}) {
   return res.json();
 }
 
-/**
- * Ensures a thread exists for the conversation, creating one if needed.
- * Returns the thread ID.
- */
 async function ensureThread(conversationId, existingThreadId) {
   if (existingThreadId) return existingThreadId;
 
@@ -36,22 +32,15 @@ async function ensureThread(conversationId, existingThreadId) {
     method: "POST",
     body: JSON.stringify({
       name: `Chat: ${conversationId.slice(0, 8)}`,
-      type: 11, // PUBLIC_THREAD
-      auto_archive_duration: 1440, // 24 hours
+      type: 11,
+      auto_archive_duration: 1440,
     }),
   });
 
-  await prisma.conversation.update({
-    where: { id: conversationId },
-    data: { discordThreadId: thread.id },
-  });
-
+  setThreadId(conversationId, thread.id);
   return thread.id;
 }
 
-/**
- * Creates a thread (if needed) and posts the user's message to it.
- */
 export async function postToDiscord(conversationId, content, existingThreadId) {
   const threadId = await ensureThread(conversationId, existingThreadId);
 
@@ -63,9 +52,6 @@ export async function postToDiscord(conversationId, content, existingThreadId) {
   });
 }
 
-/**
- * Sends a file attachment to the Discord thread.
- */
 export async function postFileToDiscord(conversationId, filepath, filename, existingThreadId) {
   const threadId = await ensureThread(conversationId, existingThreadId);
 

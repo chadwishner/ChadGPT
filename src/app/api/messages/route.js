@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { getMessages, ensureConversation, addMessage, getThreadId } from "@/lib/store";
 import { postToDiscord } from "@/lib/discord-api";
+import "@/lib/bot";
 
 // GET /api/messages?conversationId=xxx
 export async function GET(req) {
@@ -9,20 +10,7 @@ export async function GET(req) {
     return NextResponse.json({ error: "conversationId required" }, { status: 400 });
   }
 
-  const conversation = await prisma.conversation.findUnique({
-    where: { id: conversationId },
-    include: {
-      messages: {
-        orderBy: { createdAt: "asc" },
-      },
-    },
-  });
-
-  if (!conversation) {
-    return NextResponse.json({ messages: [] });
-  }
-
-  return NextResponse.json({ messages: conversation.messages });
+  return NextResponse.json({ messages: getMessages(conversationId) });
 }
 
 // POST /api/messages  { conversationId, content }
@@ -40,38 +28,15 @@ export async function POST(req) {
   // Sanitize content — limit length
   const sanitizedContent = String(content).slice(0, 2000);
 
-  // Find or create conversation
-  let conversation = await prisma.conversation.findUnique({
-    where: { id: conversationId },
-  });
-
-  if (!conversation) {
-    conversation = await prisma.conversation.create({
-      data: { id: conversationId },
-    });
-  }
-
-  // Create the message
-  await prisma.message.create({
-    data: {
-      content: sanitizedContent,
-      role: "user",
-      conversationId,
-    },
-  });
+  ensureConversation(conversationId);
+  addMessage(conversationId, { content: sanitizedContent, role: "user" });
 
   // Send to Discord thread
   try {
-    await postToDiscord(conversationId, sanitizedContent, conversation.discordThreadId);
+    await postToDiscord(conversationId, sanitizedContent, getThreadId(conversationId));
   } catch (err) {
     console.error("Failed to send to Discord:", err);
   }
 
-  // Return updated messages
-  const messages = await prisma.message.findMany({
-    where: { conversationId },
-    orderBy: { createdAt: "asc" },
-  });
-
-  return NextResponse.json({ messages });
+  return NextResponse.json({ messages: getMessages(conversationId) });
 }

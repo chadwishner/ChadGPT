@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { ensureConversation, addMessage, getMessages, getThreadId } from "@/lib/store";
 import { postToDiscord, postFileToDiscord } from "@/lib/discord-api";
 import { writeFile } from "fs/promises";
 import { join } from "path";
 import { randomUUID } from "crypto";
+import "@/lib/bot";
 
 const ALLOWED_TYPES = [
   "image/jpeg",
@@ -58,53 +59,23 @@ export async function POST(req) {
   const attachmentUrl = `/uploads/${filename}`;
   const attachmentType = file.type === "application/pdf" ? "pdf" : "image";
 
-  // Find or create conversation
-  let conversation = await prisma.conversation.findUnique({
-    where: { id: conversationId },
-  });
-
-  if (!conversation) {
-    conversation = await prisma.conversation.create({
-      data: { id: conversationId },
-    });
-  }
-
-  // Use provided text content or fall back to filename
+  ensureConversation(conversationId);
   const content = formData.get("content") || file.name;
 
-  // Create the message
-  await prisma.message.create({
-    data: {
-      content,
-      role: "user",
-      attachmentUrl,
-      attachmentType,
-      conversationId,
-    },
-  });
+  addMessage(conversationId, { content, role: "user", attachmentUrl, attachmentType });
 
   // Send file to Discord thread, include text if provided
+  const threadId = getThreadId(conversationId);
   try {
-    await postFileToDiscord(
-      conversationId,
-      filepath,
-      file.name,
-      conversation.discordThreadId
-    );
+    await postFileToDiscord(conversationId, filepath, file.name, threadId);
     if (content && content !== file.name) {
-      await postToDiscord(conversationId, content, conversation.discordThreadId);
+      await postToDiscord(conversationId, content, threadId);
     }
   } catch (err) {
     console.error("Failed to send file to Discord:", err);
   }
 
-  // Return updated messages
-  const messages = await prisma.message.findMany({
-    where: { conversationId },
-    orderBy: { createdAt: "asc" },
-  });
-
-  return NextResponse.json({ messages });
+  return NextResponse.json({ messages: getMessages(conversationId) });
   } catch (err) {
     console.error("Upload error:", err);
     return NextResponse.json(
