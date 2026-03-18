@@ -20,6 +20,8 @@ model Message {
   id             String       @id @default(uuid())
   content        String
   role           String       // "user" or "chad"
+  attachmentUrl  String?      // local path like /uploads/abc123.png
+  attachmentType String?      // "image" or "pdf"
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id])
   createdAt      DateTime     @default(now())
